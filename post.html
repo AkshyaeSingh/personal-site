@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Blog — Akshyae Singh</title>
+  <title>Post — Akshyae Singh</title>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -12,17 +12,18 @@
     <a href="index.html" class="home">Akshyae Singh</a>
   </nav>
 
-  <div class="page" id="editable-content">
-    <div class="page-header">
-      <h1>Blog</h1>
-      <p class="page-subtitle">Essays and rough notes</p>
-    </div>
+  <div class="page">
+    <article id="post-article">
 
-    <!-- Platform links: rendered by admin.js -->
-    <div id="platform-links"></div>
+      <div class="post-header" id="post-header">
+        <a href="blog.html" class="post-back">← Blog</a>
+        <div id="post-title"></div>
+        <div id="post-date"></div>
+      </div>
 
-    <!-- Post list: rendered by admin.js -->
-    <ul id="post-list" class="post-list"></ul>
+      <div id="post-body"></div>
+
+    </article>
   </div>
 
   <footer>
