@@ -1,6 +1,6 @@
 (() => {
-  const DELAY = 12000;     // ms before the collapse begins
-  const DURATION = 60000;  // ms for the collapse to fully resolve into one color
+  const DELAY = 10000;     // ms before the dissolve begins
+  const DURATION = 20000;  // ms for the dissolve to fully resolve into one color
 
   const root = document.documentElement;
   const page = document.getElementById('page');
@@ -60,17 +60,56 @@
   const END = [143, 145, 135];
   const smooth = t => { t = Math.min(1, Math.max(0, t)); return t * t * (3 - 2 * t); };
 
-  let base = [];
-  const measure = () => {
-    items.forEach(el => { el.style.transform = ''; });
-    base = items.map(el => {
-      const r = el.getBoundingClientRect();
-      return { x: r.left + r.width / 2 + scrollX, y: r.top + r.height / 2 + scrollY, jitter: 0, until: 0 };
-    });
+  const $ = id => document.getElementById(id);
+  const flood = $('px-flood'), cell = $('px-cell'), grow = $('px-grow'), grain = $('grain'), scatter = $('scatter');
+  const bursts = items.map(() => ({ jitter: 0, until: 0 }));
+  // Pre-rendered noise frames stretched over the filter region (-20%..120% of the page box).
+  // Regenerating SVG turbulence every frame is far too slow, and tiling leaves seams.
+  const CELL = 3;
+  let frames = [], frameIdx = 0, nextShiftAt = 0;
+
+  const fitNoise = () => {
+    const w = page.offsetWidth * 1.4, h = page.offsetHeight * 1.4;
+    grain.setAttribute('x', -page.offsetWidth * 0.2);
+    grain.setAttribute('y', -page.offsetHeight * 0.2);
+    grain.setAttribute('width', w);
+    grain.setAttribute('height', h);
+    return [Math.ceil(w / CELL), Math.ceil(h / CELL)];
   };
-  measure();
-  addEventListener('resize', measure);
-  if (document.fonts) document.fonts.ready.then(measure);
+
+  const buildNoise = () => {
+    const [cw, ch] = fitNoise();
+    const canvas = document.createElement('canvas');
+    canvas.width = cw;
+    canvas.height = ch;
+    const ctx = canvas.getContext('2d');
+    frames = [0, 1, 2].map(() => {
+      const img = ctx.createImageData(cw, ch);
+      for (let i = 0; i < img.data.length; i += 4) {
+        img.data[i] = Math.random() * 255;
+        img.data[i + 1] = Math.random() * 255;
+        img.data[i + 2] = 128;
+        img.data[i + 3] = 255;
+      }
+      ctx.putImageData(img, 0, 0);
+      return canvas.toDataURL();
+    });
+    grain.setAttribute('href', frames[0]);
+  };
+
+  setTimeout(buildNoise, 1500);
+  addEventListener('resize', fitNoise);
+  if (document.fonts) document.fonts.ready.then(fitNoise);
+
+  const setBlock = size => {
+    const b = Math.max(1, Math.round(size));
+    const half = Math.floor(b / 2);
+    flood.setAttribute('x', half);
+    flood.setAttribute('y', half);
+    cell.setAttribute('width', b);
+    cell.setAttribute('height', b);
+    grow.setAttribute('radius', half);
+  };
 
   const start = performance.now();
 
@@ -78,29 +117,42 @@
     const p = Math.min(1, Math.max(0, (now - start - DELAY) / DURATION));
     const e = smooth(p);
 
+    // Apply the (still no-op) filter early so its first-use stall lands while nothing is moving.
+    if (p === 0 && !page.style.filter && now - start > DELAY - 1000) {
+      setBlock(1);
+      page.style.filter = 'url(#dissolve)';
+    }
+
     if (p > 0) {
-      const cx = scrollX + innerWidth / 2;
-      const cy = scrollY + innerHeight / 2;
       let bursting = false;
 
       items.forEach((el, i) => {
-        const b = base[i];
-        if (now > b.until && Math.random() < 0.004 + 0.05 * e) {
-          b.until = now + 60 + Math.random() * 180;
-          b.jitter = (Math.random() * 2 - 1) * (6 + 40 * e);
+        const b = bursts[i];
+        if (now > b.until && Math.random() < 0.01 + 0.08 * e) {
+          b.until = now + 50 + Math.random() * 150;
+          b.jitter = (Math.random() * 2 - 1) * (6 + 30 * e);
         }
         const j = now < b.until ? b.jitter : 0;
         if (j) bursting = true;
-        el.style.transform = `translate(${(cx - b.x) * e + j}px, ${(cy - b.y) * e}px) scale(${1 - 0.9 * e})`;
+        el.style.transform = j ? `translateX(${j}px)` : '';
       });
 
-      const ab = 3 * e + (bursting ? 5 * e + 2 : 0);
+      // Pixels grow into blocks, then scatter into their neighbours.
+      setBlock(1 + 20 * Math.pow(e, 1.5));
+      scatter.setAttribute('scale', (160 * e).toFixed(1));
+      if (now > nextShiftAt) {
+        frameIdx = (frameIdx + 1) % frames.length;
+        grain.setAttribute('href', frames[frameIdx]);
+        nextShiftAt = now + 90;
+      }
+
+      const ab = 2 * e + (bursting ? 4 * e + 2 : 0);
       page.style.textShadow = `${ab}px 0 rgba(230,40,90,.45), ${-ab}px 0 rgba(30,170,220,.45)`;
-      page.style.filter = `blur(${6 * e}px) saturate(${1 - e}) contrast(${1 - 0.6 * e})`;
+      page.style.filter = `url(#dissolve) saturate(${1 - e}) contrast(${1 - 0.6 * e}) blur(${3 * e * e}px)`;
 
       const c = BG.map((v, k) => Math.round(v + (END[k] - v) * e));
       document.body.style.background = root.style.background = `rgb(${c})`;
-      veil.style.opacity = smooth((p - 0.6) / 0.4);
+      veil.style.opacity = smooth((p - 0.55) / 0.45);
 
       updateHover();
     }
